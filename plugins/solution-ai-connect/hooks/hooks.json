@@ -1,0 +1,18 @@
+{
+  "description": "Check for Solution AI Connect updates at most once daily; notify once per newer version without installing it.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/skills/solai-plugin-maintenance/scripts/check_updates.py\" --hook",
+            "timeout": 10,
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

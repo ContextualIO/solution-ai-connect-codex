@@ -1,0 +1,291 @@
+# Changelog
+
+All notable changes to the Solution AI Connect plugin are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.7.6] — 2026-08-14
+
+A broad hardening pass across the flow-editor and CLI skills: safer flow topology (fan-out convergence, the racing-branch trap, HTTP-vs-event roles), object-type authoring, `send-to-agent` semantics, the Save-vs-Deploy lifecycle, the Ctxl Tool desktop app as the MCP-management surface, tool-argument discipline, and several corrections to guidance that had drifted from platform behavior. Also documents the `@contextual-io/cli` 0.13.0 `agentmeta` surface (agent sizes, images, npm allow-list), how npm-package readiness affects Flow Editor and agent startup, and the `agents instances` / `runnerstatus` surface for troubleshooting stuck event/cron agents. Primary tickets: CTX-3583, CTX-3585, CTX-3591, CTX-3547, CTX-3555, CTX-3556, CON-273, CON-459, CON-460, CON-462, CON-464, CON-465, CON-466, CON-467, CON-468, CON-469, CON-470, CON-471, CON-472, CON-474, CTX-3570.
+
+### Added
+
+#### `AGENTS.md`
+
+- **Runtime model — "HTTP is the front door; the event fabric is the hallway."** Always-loaded framing: HTTP agents serve the outside world; internal dispatch (background / long-running work) rides the event layer via a record-write trigger or `send-to-agent`, never an internal HTTP call between a solution's own agents. (CON-464)
+
+#### `skills/solai-flow-editor/node-reference.md`
+
+- New **"One output, one path — the racing-branch trap"** section. One output wired to two paths is not a valid execution pattern: in a deployed event agent the first message to reach `contextual-end` resolves the run and the racing branch is not guaranteed to fire (the editor preview does not reproduce it); on an HTTP lane, execution past the first `http-response` produces runaway catch loops. `log-tap` belongs inline; hand off async side effects via a record trigger or `send-to-agent`. (CTX-3591, CON-465)
+- New **"`send-to-agent` — fire-and-forget hand-off to an event agent"** section. Produces onto the target agent's topic; **event agents only** — targeting an HTTP or Cron agent is a silent no-op (nothing consumes it, no error). `msg.headers` do not travel — only node-configured headers, plus the auto-forwarded log correlation id. The broker send result is written to the node's `outputProperty`. (CON-465)
+- New **"`split` / `join` — fan-out and convergence"** section: the termination trap (first message to `contextual-end` ends the whole flow; validates clean; does not reproduce in preview), the convergence pattern (`split` → per-item work → `join` auto → single terminal), `split`/`join` configuration, and `loop` vs `split`/`join` selection. (CTX-3591)
+- New **"HTTP agents, base URLs, and routes"** section. A deployed HTTP agent serves one flow at one base URL (`https://<agent-id>.service.<tenant-id>.my.contextual.io`; a custom domain can front it on supporting plans); every `http-in` node is a route under that origin. One web app = one HTTP flow + one agent + many routes — not one flow per endpoint, and never internal hops through public agent URLs. `.flow.` hosts are the editor runtime, not a deployment. (CON-467)
+- **AI Connections require `aiProvider`.** The `api-configuration` type schema does not declare it, but the AI Route picker only offers Connections that carry one; a Connection created from the schema alone persists cleanly and silently never appears in the picker. (CON-466)
+
+#### `skills/solai-flow-editor/SKILL.md`
+
+- New **"Saving and deploying"** section. Save persists committed editor changes as a new flow version (via `flow_save`; no-ops when nothing is unsaved; returns status only; persists asynchronously) — call it only on user request or a standing session grant, never as a reflex. Deploy pins an agent to a flow version (`<flow-id>#<version>`); repinning triggers a rolling restart (30–90+ seconds; longer for npm-heavy flows and cold pods; cron agents are not restarted). Instance status lives on the agent's Operations tab. A new instance is not ready until its npm packages load — the main driver of restarts nearing 90 seconds — and the old instance serves until then. (CON-462)
+- New **"Tool argument discipline"** section: inspect a tool's parameter schema before its first use in a session; for nullable parameters, omit rather than pass a literal `null` (text-encoded args deliver a bare `null` as the string `"null"`, which errors on object/array/number types and silently corrupts string types); on the first invalid-arguments error, re-read the type union and fix by omission. (CON-459)
+- New **"Searching code across nodes"** section: `code_grep` `searchScope` (`node` / `tab` / `subflow` / `all`) and the find-references pattern — one scoped call instead of repeated single-node passes. (CTX-3585)
+
+#### `skills/solai-cli/cli-reference.md`
+
+- **§MCP gains a Ctxl Tool desktop-app intro.** The app is the typical way users run and manage Flow Editor MCP servers (tenant-specific servers behind a `localhost:5051` proxy) and CLI configs; the app check and an `/mcp` reconnect come before terminal diagnostics. (CON-460)
+- New **"Agent runtime status"** section documenting the `@contextual-io/cli` 0.13.0 read-only commands `ctxl agents instances` (running instances/pods) and `ctxl agents runnerstatus` (per-instance runner state; event/cron agents only) — how to read a stuck agent (`{}` = idle; a populated `event` with a non-terminal `lastCompletedNode` = wedged there), the error shapes, no-CLI-restart, and a **msg-bearing safe-consumption** callout: `runnerstatus` exposes the raw in-flight event/headers, so project to the diagnostic fields and never dump `event`/`eventHeaders` into an AI's context. (CON-468)
+- New **"Agent metadata"** section documenting the `@contextual-io/cli` 0.13.0 read-only commands `ctxl agentmeta sizes` (agent sizes with CPU/memory), `agentmeta images` (agent image versions), and `agentmeta npmwhitelist` (packages available to function nodes — confirm before importing). Includes an **npm-readiness** callout: imported packages are retrieved/installed/loaded before use and throw until ready; the Flow Editor shows a green **flow is ready** banner, and a deployed agent's new instance is not ready until packages load (the old instance serves until then — no live agent runs with unloaded packages); the delay scales with package count/size, up to ~90 seconds. (CTX-3547, CTX-3555, CTX-3556)
+
+#### `README.md`
+
+- New **"Companion app — Ctxl Tool"** section (macOS / Windows desktop companion that runs and manages Flow Editor MCP servers and CLI configs; installs from `build-artifacts.contextual.io` or the Homebrew cask). (CON-460)
+- **"Publishing Updates" gains "Release flow and tagging"** — the `release/x.y.z` branch → PR shape (bump as the closing commit) and the annotated `vX.Y.Z` tag convention.
+
+### Changed
+
+#### `skills/solai-flow-editor/SKILL.md`
+
+- **Setup Check rewritten** around the Ctxl Tool proxy model: tenant-prefixed tool names (`mcp__ctxl-flow-editor__<tenant>__…`), tool churn as normal server lifecycle (not an error), and a recovery ladder — check the app → `/mcp` reconnect → terminal `ctxl mcp serve` fallback. (CON-460)
+- **Tray guidance updated to auto-open.** `tray_read` auto-opens the target tray, so the open-first workaround is removed; switching to another node's tray auto-commits pending edits (a session-level commit, not a flow Save). (CON-273)
+- **Flow-patterns and the one-wire-per-output-port rule** carry the racing-branch runtime rationale and the front-door / hallway framing. (CTX-3591, CON-464)
+- **"Editing code" hardened** — read-before-edit is a rule; `code_edit` batches are atomic all-or-nothing (a non-matching `oldString` rolls back the whole batch; recovery is re-read and resubmit). (CTX-3585)
+- **"Secret- and msg-bearing surfaces — project, don't dump"** added to Important behaviors — dual-homes the CLI secret-handling discipline (Connection credentials, agent env vars) into the flow-editor skill and extends it to msg-bearing surfaces (`log-tap` / Tenant Logs, `runnerstatus`): request non-secret fields, never read secrets back to verify, project before surfacing into context. (CON-469)
+
+#### `skills/solai-flow-editor/node-reference.md`
+
+- **`join` mode corrected to `custom`** (the config value; the editor UI labels it "manual"), with the five `build` options including `buffer`; `mode: "manual"` is not a valid config value and silently falls back to `auto`. (CTX-3591)
+- **Streaming `parts.count` scoped** — omitted only for string / buffer splits; array and object splits always stamp `count`. Auto-mode `msg.complete` must itself carry `msg.parts.id`. (CTX-3591)
+- **Split / join trays open over MCP** — the prior "trays are not openable" note is removed (auto-open shipped). (CON-273)
+- **`contextual-error` on inject-driven test tabs** draws the `no-unconnected-event-nodes` lint error; terminate the catch chain at the error `log-tap` on such tabs. (CON-466)
+- **A main-path event-flow function that emits nothing hangs the run** — a bare `return null;` (single output) or `return [null, null]` leaves nothing flowing onward, so no message reaches `contextual-end`, the execution never resolves, and the instance stays busy (a hang, distinct from the racing-branch data-drop). Positional `null` on a multi-output node (`return [null, msg]`) is normal routing and fine, as long as an emitted branch reaches a terminal. (CON-472)
+- **`log-tap` logging discipline + shape-profiling.** The `log-tap` section is reframed around *selective* logging — log the fields you deliberately choose (any number); the *wholesale* dump (`outputPropertyType: "full"` / entire `msg` / raw response object) is the anti-pattern, since it persists `Authorization` headers, cookies, and PII from the parts you weren't looking at. Adds a **"Profiling a response or message shape"** technique: a `function`-node probe that logs keys + types (no values) to map an unknown response's structure in one pass, safely — depth-bounded by default, with completeness reporting that flags any truncated branch (and supports a deliberate shallow first look). Validated live. (CON-470, CON-474)
+- **`send-to-agent` exercises the real event plane, including from an editor-runtime `inject`** — `inject → send-to-agent` is a valid way to test a deployed event agent; only an `inject` wired directly into logic (no `send-to-agent`) does nothing against a deployed agent. (CON-471)
+
+#### `skills/solai-cli/cli-reference.md`
+
+- **§Object Type Schemas now covers `ctxl types replace`** alongside `types add` (same envelope; a `replace` that drops `"type": "custom"` hits the same failure modes); the `objectType` row is always `"internal"`; two callouts — do not author `external` through the CLI, and an `$.objectType` error on a valid value means a missing `"type": "custom"` (the same 400 also carries the real `$.type - Invalid option` signal; the envelope is a plain union, not discriminated on `type`). (CTX-3583)
+- **AI Connection `aiProvider` requirement** documented alongside the AI-Route model-selection guidance. (CON-466)
+- **`ctxl logs -q -` (CLQL via stdin) documented as working** — the interim "pass a real file path, not `-`" caveat is removed following the CLI fix. (CTX-3570)
+
+#### `skills/solai-cli/SKILL.md`
+
+- Write-gotchas gain the full type-registration envelope rule (`"type": "custom"` + `"objectType": "internal"`, never `external`) and the `aiProvider` requirement for AI Connections. (CTX-3583, CON-466)
+
+#### `skills/solai-data-modeler/SKILL.md`
+
+- New **"Internal native-object types only"** subsection — the designed schema is the inner body of an `"internal"` type; envelope assembly is deferred to `/solai-cli`. (CTX-3583)
+
+## [0.7.5] — 2026-08-13
+
+### Fixed
+
+- Corrected earlier Query Object guidance shipped in the 0.7.4 build. The node reference now documents the `pageSize`-dependent flat-record and `{items}` output shapes, zero-match behavior, conditional `totalCount` and `nextPageToken` fields, the page-size-1 exception, source unfolding, and safe Loop enumeration of `payload.items`.
+
+## [0.7.4] — 2026-06-04
+
+Adds documentation and release-management tooling for the `services` and `servicereleases` topics introduced in recent `@contextual-io/cli` builds, and ships a new `solai-release-advisor` skill: a pre-publish Build-composition advisor for services you own — inspect available component bumps since the last release, project the `services patch`, and compose the Build (pinning selected component versions) before snapping the release in the UI. Also documents the new `logs` topic (`ctxl logs`, `ctxl logs backlog`, `ctxl logs backlog flush`) and the `--fields` positive field-projection flag landed on every list command, with a safe-consumption discipline framing the logs surface as a passthrough for tenant-flow-emitted content (`log-tap` and similar nodes serialize what they receive without platform-side redaction — flows that log request/response objects naturally surface `Authorization` headers, bodies, and cookies, so agents project to the envelope with text tools before ingestion — `ctxl logs` emits line-formatted text, not JSON). Refreshes the MCP section for `@contextual-io/cli` 0.11 — the `--trace` verbosity flag on `ctxl mcp serve` and a new `ctxl mcp debug` connectivity diagnostic, hard-gated as a last resort so a missed approval dialog is recovered by re-triggering rather than chasing a diagnostic. Also documents the HTTP ingress payload-cap delta between the Flow Editor preview runtime (~2 MB) and a deployed `flow-http` agent runtime (40 MB). Primary tickets (CTX-3451, CTX-3522, CTX-3492); related to (CTX-3504), (CTX-3464), (CTX-3517).
+
+### Added
+
+#### `skills/solai-release-advisor/` (new skill)
+
+- `SKILL.md` provides the owned-service Build-composition advisor on top of the new services CLI surface: detect ownership via `sourceTenantId`, inspect candidate component bumps, project the `services patch` against the current manifest, and confirm before any write. Installed-service (target-tenant) operations are out of scope for this build — the skill surfaces that and stops.
+- `scripts/service_manifest_summarize.py` — compact manifest table for a service (working manifest or a specific release), optionally diffed against another release with per-dep tenant-max version lookup. Strips inline `data` from `services get --with-data` / `servicereleases get` output so routine inventory stays well under the megabyte an unfiltered manifest dump can produce on a multi-dep service.
+- The helper script is read-only: it never invokes `services patch` or any other write. The skill is explicit that it never enacts a service install / update / release-snap — those remain workspace UI actions today; the skill produces the patch plan the user takes into the UI.
+- **Permission-setup UX** in `SKILL.md`: first-invocation-per-session step presents a **three-way choice**: (1) default prompt-each-time, (2) helper scripts only, (3) helper scripts + narrow read-only `ctxl` patterns the skill uses directly (`services list/get`, `servicereleases list/get/diff/updatediff`, `config current/list`). The third option provides a friction-free read workflow while keeping all writes (`services patch`, `records patch`, `records replace`, `recordversions rollback`, etc.) prompting because they are deliberately not in the allow-list. JSON snippets for `.claude/settings.json` are provided for each option, plus neutral guidance for other shell-sandboxed environments. Explicitly warns against broad write-covering patterns (`Bash(ctxl services *)`, `Bash(ctxl records *)`, `Bash(ctxl types *)`, `Bash(ctxl recordversions *)`, `Bash(ctxl * patch *)`, etc.) and includes an audit step that inspects the existing `permissions.allow` array, surfaces any already-present broad write-covering patterns as a tightening opportunity, and never modifies existing rules without explicit confirmation.
+- **Reference-read discipline** in `SKILL.md`: runtime checks instruct the agent to read the entire `solai-cli/cli-reference.md` in one pass on entry, explicitly *not* grepping for specific sections. Section-specific grepping was observed to miss cross-cutting content (Output Formatting, large-payload warnings, source-tenant routing table) that the agent then needed mid-workflow.
+- **Permission walk: piped-segment behaviour + `jq` preference**. The permission walk in `SKILL.md` now documents that Claude Code's Bash allow-list **splits piped commands on shell operators** (`|`, `&&`, `||`, `;`) and matches each subcommand independently — so an idiom like `ctxl ... | python3 -c "..."` needs **both** segments allow-listed, not just the first. Option 3 of the three-way choice now includes `Bash(jq *)` so the agent's inline-parse idiom (`ctxl ... | jq '...'`) is prompt-free; `jq` is read-only and safe to broadly allow-list, unlike `python3 -c '...'` which can execute arbitrary code. New hard rule directs the agent to **prefer `jq` over `python3 -c` for inline JSON parsing**, reserving `python3 -c` for genuinely complex transformations. Also documents that Claude Code **hot-reloads `permissions` rules live** — no session restart needed for newly added allow patterns to take effect.
+
+#### `skills/solai-flow-editor/node-reference.md`
+
+- New **"HTTP ingress payload limits — editor runtime vs. agent runtime"** section. Documents the runtime-side ingress cap delta: the Flow Editor's preview runtime caps HTTP request bodies at ~2 MB (`nginx client_max_body_size: 2m`), while a deployed `flow-http` agent's runtime accepts up to 40 MB. Includes the practical routing implication — testing large-payload ingress requires binding the flow to an agent and exercising the agent's runtime endpoint rather than the editor preview — and a diagnostic tip for spotting the cap as the cause of opaque `413 Request Entity Too Large` responses.
+- New **"AI model selection (AI Routes)"** section. Establishes that in the Contextual AI Gateway the model is selected on the AI Route only — not on the AI Connection (provider + credentials) or on AI Generate / AI Tool nodes (which inherit the Route's model). Directs the agent never to fill the Route's model field from training memory (identifiers go stale fast), to confirm a current GA model via web retrieval (e.g. the provider's model docs or models.dev) scoped to the Connection's provider type (OpenAI, Anthropic, Azure OpenAI, Google AI, Vertex AI, Vertex AI Anthropic), to default to the current generation, and to verify the Route with a test invocation before relying on it. Provider-/recency-policy framing, no pinned model IDs.
+
+### Changed
+
+#### `skills/solai-cli/cli-reference.md`
+
+- New `## Output Formatting` section near the top: JSON output is compact (single-line) by default; pass `--pretty` for indented output. Covers all topics that emit JSON. Includes the empirical caveat that large responses (e.g. `servicereleases list` with inline `data`) can exceed 800KB even compact — for routine work, prefer flags that omit inline record bodies.
+- New `## Services` section: ownership model (owned versus installed, detected by `sourceTenantId` on the response), dependency entry shape (`typeId / instanceId? / version / data?`) with the type-definition vs typed-instance distinction (`instanceId` absent means the type definition itself, versioned), direct versus peer semantics, the `services patch` URI form (`native-object:<type-id>#N` or `native-object:<type-id>/<instance-id>#N`), the `--with-data` size note, and write discipline for `services patch`.
+- **Working-version mechanic clarified** in the Services section: snapping a release atomically bumps the working `version` by +1 as part of the snap transaction (verified empirically by timestamp delta on a snap). Immediately post-snap, `service.version` equals `(latest_released_version) + 1` and the working manifest's direct-dep pins are byte-identical to the just-snapped release — the **normal baseline, not a pending change**. Working `version` advances further only on subsequent `services patch` calls. `servicereleases get -v <service.version>` 404s on the post-snap baseline — expected, not an error.
+- **Services have no audit trail**: `ctxl recordaudittrail --type service` returns `404 Type 'service' not found`. Documented as a note under the working-version subsection; suggests comparing `_metaData.updatedAt` on the service against `_metaData.createdAt` on the latest release to investigate timing.
+- New `## Service Releases` section: the four `releaseTrack` values (`development`, `release-candidate`, `general-availability`, `removed-from-distribution`), the release object shape (`id`, `name`, `version`, `releaseTrack`, `description`, `dependencies`, `_metaData`), diff scope (computed over `dependencies` only — `jsonpatch` paths begin at `/direct/...` or `/peer/...`, not `/dependencies/direct/...`), and the **update-time pruning of direct deps** semantics — at update, any direct-dep record version in the target tenant that exceeds the incoming pinned version is pruned (peer deps are not). Cross-refers to `solai-release-advisor` for the owned-service Build-composition advisor.
+- New **"Which read paths route via `sourceTenantId`"** subsection under Service Releases: table mapping each `servicereleases` read command (`list --updates`, `updatediff`, `get`, `list`, `diff`) to whether it routes via the installed service's `sourceTenantId`. Documents the gotcha that `servicereleases get -v N` 404s on installed services for releases the target tenant has never pulled, because only `--updates` and `updatediff` route via the source. Recommends using the inline release object from `--updates` rather than chaining a separate `get`.
+- New **"Field projection on `list` commands"** subsection under `## Output Formatting` documenting `--fields <comma-separated-paths>` on every list topic (`records list`, `types list`, `recordversions list`, `recordaudittrail list`, `services list`, `servicereleases list`). Positive projection — server returns only the named paths per item. Motivated by the CTX-3517 measurement that a single service's `servicereleases list` can exceed 30 MB driven by inline `dependencies.direct[].data`. Cross-referenced from `## Service Releases` → `### Release object shape`.
+- New **`## Logs`** section (placed between Service Releases and Platform Type IDs) covering:
+  - `ctxl logs [SUB-KIND]` with the flag table (`-f, --follow`, `-l, --level` repeatable, `--since` relative duration, `--since-time` ISO8601 zulu, `-s, --sub-kind`, `-t, --tail` defaulting to `-1` / max page-size 250, `-q, --clql-file` server-side CLQL query from a file or stdin, `--pretty`). Documents `--since` / `--since-time` as mutually exclusive and notes that follow mode ignores page-based filters.
+  - **subKind auto-expansion** — `ctxl logs <x>` matches both `<x>` and `<x>-agent-<silo>` on the active silo; pass the fully-qualified form to disable expansion.
+  - Output line format (`<createdAt> [<typeId>/<instanceId>] [<sessionId>] <level>: <message>`) and the `--pretty` switch (Node `util.inspect` `%o` vs. `JSON.stringify`). Notes that `ctxl logs` output is line-formatted text, not JSON — not `jq`-parseable; project with `sed`/`awk` or filter server-side with `--clql-file`.
+  - `LogMessage` shape table (`id`, `createdAt`, `level`, `kind` ∈ `trigger|action|execution`, `subKind`, `typeId`, `instanceId`, `sessionId`, optional `correlationId`, `source`, `type` ∈ `string|json`, `message`).
+  - `ctxl logs backlog` (reports the tenant's unconsumed-log lag — `{lag, partitions}`, not records) and `ctxl logs backlog flush` (DELETE — clears the tenant lag; flagged ⚠️ write, irreversible).
+  - Common-patterns block with concrete invocations (error tail with `--since 5m`, follow with auto-expansion, fully-qualified subKind with absolute time cutoff).
+- New **`### Safe consumption patterns`** subsection under `## Logs` framing the logs surface as a passthrough for content emitted by tenant flows — `log-tap` and similar nodes serialize whatever object they receive without platform-side redaction, so HTTP-handling flows that log request/response objects naturally surface `Authorization` headers, bodies, and cookies. Frames the discipline for both ends of the pipe: flow authors should be intentional about what `log-tap` receives (log keys and shapes, not whole objects); log consumers — especially AI agents — should project to the envelope by default. Section documents three consumption patterns: (1) **envelope-only projection** as the default (text-based `sed` against the line format — drops `message` entirely; usable for "what's happening?" queries without exposing payload content; `ctxl logs` is text, not `jq`-parseable), (2) **targeted message inspection with JWT redaction** via `sed` (when the user explicitly asks to expand a specific log's payload), (3) **`--follow` discipline** that always projects before any stdout-consumer in the agent's context sees a line, bounded by `head -N` or `timeout`. Notes that `backlog` is a tenant lag summary (counts, no payload), not a redaction surface.
+- **MCP section updated for CLI 0.11**: documents the new `--trace` flag on `ctxl mcp serve` (socket-level diagnostics, verbosity level 2 vs. `-V` level 1) and adds a `### ctxl mcp debug` subsection — a one-shot connectivity diagnostic (connect → ping → manifest → bind JSON report) with a scope note framing it as a last-resort tool for genuine connection failures, not a fix for a missed approval dialog.
+- New **"Tenant Logs vs. Flow Editor logger"** disambiguation — a shared routing rule (Logs section here + `node-reference.md`, cross-linked, with pointer bullets in both `SKILL.md`s) for the overloaded "logs"/"logger" terms: default to the active working context, treat CLQL as a Tenant-Logs tell, and ask when context and cues conflict.
+- New **secret-handling guidance** for secret-bearing records (Connections + Agents): inspect via projected `list` queries and non-secret fields, never read a secret back to "verify," and never route a secret through chat. Field-projection callout here + a hard rule in `solai-cli/SKILL.md`.
+- Agent Records "Key gotchas" extended with a bullet on the 40 MB `flow-http` agent ingress ceiling vs. the ~2 MB editor preview ceiling, cross-referring to the new `solai-flow-editor/node-reference.md` section for the routing detail.
+
+#### `skills/solai-cli/SKILL.md`
+
+- Write-discipline hard rule extended to name `services patch` explicitly: project the patch against current `services get` output, surface the dependency-list diff, ask for explicit confirmation. For pre-publish Build-composition advice on an owned service, defer to `solai-release-advisor`.
+- New hard rule for **AI model selection on AI Routes** — mirrors the `solai-flow-editor` guidance into the CLI skill so it lands when a Connection/Route is set up on its own, outside any flow (where `node-reference.md` is not loaded). The model lives on the Route (not the Connection or the AI node); never use a model ID from training memory; confirm a current GA model via web retrieval (provider docs / models.dev) scoped to the Connection's provider type; verify with a test invocation. (CTX-3554)
+- New hard rule for `ctxl logs backlog flush`: irreversible, tenant-wide DELETE that clears the unconsumed-log lag (not per-user). Must be its own confirmed step — show the user the current lag via `ctxl logs backlog` first, then ask explicitly before flushing. Not bundled into broader sequences.
+- New hard rule framing **`ctxl logs` as a passthrough for tenant-flow-emitted content**. Because `message` is serialized by the emitting node (`log-tap` and similar) with no platform-side redaction, HTTP-handling flows that log request/response objects naturally surface `Authorization` headers, bodies, and cookies. Rule directs the agent to default to envelope-only projection (text-based `sed` for `ctxl logs`, which emits line-formatted text rather than JSON; `logs backlog` is a tenant lag summary, not log records, and not a payload surface) before any logs output reaches the agent's context, and to expand `message` only when the user explicitly asks — paired with JWT redaction even then. Applies on tenants the user owns, not just third-party.
+- `## Output Expectations` adds a bullet on the compact-by-default JSON + `--pretty` convention for human-facing output.
+- MCP guidance updated for CLI 0.11: notes the `--trace` verbosity level on `ctxl mcp serve`, and adds a hard rule gating `ctxl mcp debug` as a last-resort connectivity diagnostic — the missed-dialog recovery (re-trigger + watch the sidebar) stays primary; escalate to `mcp debug` only when the connection itself is suspect.
+
+### Fixed & refined
+
+- **Secret-bearing records — no inference from metadata.** Guard so the agent never infers credential storage or exposure from a record's shape (an empty `_metaData.secrets` does **not** mean a credential is inline/less-protected) and never raises a "secret-hygiene" concern from record metadata — all credential fields are platform-managed secrets. (CTX-3557)
+- **`services get --with-data` corrected.** `services get` returns only `id`/`name`/`version`/`_metaData` by default — the `dependencies` manifest is omitted **entirely** without `--with-data` (the prior note wrongly implied the list showed either way). All dependent reads updated: the Build-manifest read, the post-patch re-verify, and ownership detection (which a bare `services get` left blind to `sourceTenantId`). (CTX-3451)
+- **`services patch` — one change per call.** Issue a single `--set-direct` / `--add-direct` / `--add-peer` per call and re-verify before the next; don't batch add/set flags in one call (they may not all take effect). (CTX-3563)
+- **CLQL `matches` vs glob.** Query-shape guidance: `*TERM*` glob for substring/contains; `_message matches` is anchored (a leading-wildcard pattern silently returns 0 for a term that is present); both are case-sensitive. (CTX-3522, CTX-3564)
+- **Installed-service hard-stop.** `solai-release-advisor` firmly stops on installed services and forbids improvising target-tenant update / pruning / hotfix-drift analysis — interim until the installed-service workflow ships. (CTX-3565)
+- **Build net-diff guidance.** The advisor now shows the net pinned→target diff before a bump (records with an instance id via `recordversions diff`; type definitions via the `--with-data` manifest `.data` vs `types get`), drops `_metaData` churn, and reports behavioral vs cosmetic. Type-def version retrieval is flagged as a temporary CLI blind spot (the registry API supports it and the workspace Build tab diffs type-def versions in-browser; no `ctxl` command surfaces it yet). (CTX-3451)
+- **`logs` CLQL via stdin warned off.** `ctxl logs -q -` (CLQL from stdin) silently returns nothing — the docs now direct users to a real `--clql-file <file>` path until the stdin read is fixed. (CTX-3567)
+
+## [0.7.3] — 2026-05-15
+
+Replaces the flow-editor hex-ID pre-generation rule with a placeholder/uniqueness rule that matches the import tool's actual contract, documents `node_update`'s silent no-op on the `wires` field, and refreshes the silent-failure catalogue against the empirically-confirmed list. Also adds an MIT LICENSE at repo root.
+
+### Added
+
+- `LICENSE` — standard OSI MIT license at repo root, copyright Contextual, Inc. The repo went public without an explicit license file; this formalizes it.
+
+### Changed
+
+#### `skills/solai-flow-editor/SKILL.md`
+
+- **Sequencing rule 3 replaced.** Previous rule mandated pre-generated hex IDs via `secrets.token_hex(8)` before every `import`. Empirical testing against the live MCP confirmed the editor regenerates provided IDs under `preserveIds:false` (so hex IDs are no different from any short placeholder), and the actual invariant the rule was defending is *intra-batch uniqueness*: duplicate placeholder IDs silently drop the duplicate node, and numeric or empty-string `id`s silently drop the node entirely. New rule frames `id` in an import payload as a *placeholder used to resolve intra-batch wires*, requires uniqueness within the batch, and keeps the hex-ID recipe only as an optional uniqueness guarantee for payloads built in pieces.
+- **Wiring discipline tightened.** `node_update` is now documented as a silent no-op on the `wires` field — both `changes:{wires:...}` and JSON Patch `/wires` paths return `status:"ok", updated:["wires"], valid:true` while leaving wires unchanged. Applies to adding a wire, redirecting an existing wire, and clearing wires. Verified directly against `node_update changes:{name:...}` which does mutate, confirming the no-op is scoped to the `wires` field specifically. The `wire` tool is the only path that modifies wires.
+- **Silent-failure catalogue refreshed** in the skill-gate paragraph and the `nodeCount` verification rule. Replaces stale "missing pre-generated node IDs" framing with the empirically-confirmed list: cross-batch wire drops, intra-batch placeholder-ID collisions, invalid-`id`-type drops (numeric, empty string), and `node_update` wire no-ops.
+
+#### `AGENTS.md`
+
+- Silent-failure catalogue at the skill-gate updated to match the SKILL.md catalogue.
+- "Hex-id pre-generation" example replaced with "wiring discipline" in the skill-bypass warning paragraph.
+
+## [0.7.2] — 2026-05-12
+
+Tracks `@contextual-io/cli@0.10.0`. CLI reference picks up the new `recordversions` topic, the new `recordaudittrail list` command, and the extended `records get --version` / `#N` URI fragment. Flow editor reference also picks up a new **Reserved `msg` keys** subsection for Native Object nodes, addressing a class of silent-override foot-guns observed when AI agents author flows.
+
+### Added
+
+#### `skills/solai-cli/cli-reference.md`
+
+- New **`## Record Versions`** section covering `recordversions list`, `recordversions diff`, `recordversions rollback` (and their `rv …` aliases). Documents the `diff` version-range mini-grammar (`5..7`, `7^`, `7^^^`, `7~3`), the three `--format` options (`console` / `json` / `jsonpatch`), and the *non-obvious* `diff` exit-code semantics (1 when versions differ, 0 when identical).
+- New **`## Record Audit Trail`** section covering `recordaudittrail list` (and the `ra …` aliases), framed against the version history so the two are not confused.
+- New cross-cutting note on **default ordering asymmetry**: `recordversions list` and `recordaudittrail list` default to `_metaData.createdAt:desc`; `records list` and `types list` have no default ordering.
+- `records get` synopsis updated to document the new `--version N` flag and the `native-object:TYPE/ID#N` URI fragment, including the rule that `--version` is incompatible with multiple `--id`.
+- New **"Handling large diffs"** subsection under Record Versions: `--format jsonpatch` + summarization recipe, `--no-moves` for layout-noise suppression, and the redirect-to-file-then-Read pattern for full human review without inflating the shell-output preview path.
+- New **"Counting without pulling bodies"** cross-cutting callout: `--include-total --page-size 1` on any `list` command returns `totalCount` in one round-trip. Documents the **`--page-size 0` server-ignore foot-gun** (CLI accepts it; server falls back to default page ~25), and the residual cost on `recordversions list` (single returned body is the full per-version record content). Empirically verified against a flow with 38 versions.
+
+#### `skills/solai-flow-editor/`
+
+- New **"Reserved `msg` keys"** subsection under Native Object nodes in `node-reference.md` documenting **15 reserved `msg` properties** (`objectId`, `typeId`, `query`, `search`, `filters`, `filterMode`, etc.) that **silently override** a node's configured value when set upstream — no runtime warning, no validation error. Addresses a class of foot-guns where SAI-authored function nodes write to `msg.objectId` / `msg.typeId` / `msg.query` and downstream Native Object node configuration is silently bypassed.
+- `SKILL.md` updated with an explicit authoring-time callout for reserved `msg` keys on Native Objects, reinforcing the `node-reference.md` content at the skill-orchestration layer. Spot-check eval across six prompts (main vs. reference-only vs. reference + skill) showed a 3/6 → 4/6 → 5/6 pass rate, confirming the skill-level reinforcement carries weight beyond the reference doc alone.
+
+### Changed
+
+- **Disallowed In This Skill** list extended with `ctxl recordversions rollback --do-not-bump` (and the `rv rollback --do-not-bump` alias). Plain `rollback` without the flag remains allowed because version history is preserved and the operation is recoverable; only the history-truncating variant is destructive.
+
+### Fixed
+
+- `recordversions diff` synopsis corrected to **URI form only**. Earlier draft suggested `[--type TYPE] [--id ID]` was interchangeable with the URI argument as it is for `list` and `rollback`; in fact `diff` takes `VERSIONS` as a second positional, and oclif cannot skip the first positional, so flag-only invocation always misroutes the version range into the URI slot and fails URI-regex validation. Confirmed via clean-context test session.
+
+## [0.7.1] — 2026-04-27
+
+The first comprehensive release of the plugin since adopting verify-first empirical testing as the operating model for documentation evolution. This release lands a substantial body of empirically-verified reference content alongside foundational restructuring of the plugin's skills and agents.
+
+### Added
+
+#### Plugin baseline
+
+- New root-level **`AGENTS.md`** providing always-loaded session context: platform identity (Contextual.io / Solution AI / SolAI naming), reserved component type map, live flow editing model with skill-gate enforcement, four-skill table with trigger conditions, six-agent table with role mapping, prerequisites, and hard limits.
+- New **plugin update flow** via `claude plugin update ctxl@contextual-io`, replacing the previous no-op `autoUpdate` mechanism. User-facing output is restated in "Solution AI Connect plugin" terms rather than letting the raw `ctxl` marketplace output stand.
+- New **"Contributing"** section in README with `.git/info/exclude` guidance for personal working files.
+
+#### `skills/solai-flow-editor/`
+
+- **Split** into `SKILL.md` (orchestration, behavioral rules, sequencing) + `node-reference.md` (node-specific reference, foot-gun catalogue).
+- **Skill gate hardening**: required before any non-orientation `mcp__ctxl-flow-editor__*` call. Explicit trigger verb list (add, change, move, wire, delete, rename, configure, group, copy, validate, look at, check, read), exempt vs non-exempt tool list, three-step sequence when flow-editing intent is detected.
+- **Skill scope expanded** beyond edit-only: now also the source-of-truth for node-level behavior, configuration, and authoring patterns (function-node logging, loop wiring, Native Object node TypedInput patterns, `http-response` status precedence, etc.) — so node-behavior Q&A routes here rather than to `solai-knowledge`.
+- **Reading `node-reference.md` is now mandatory**, not advisory: explicit "not optional" framing with concrete foot-gun examples and the type_info-vs-node-reference asymmetry (*type_info reports defaults; node-reference warns when those defaults will throw at runtime*).
+- **Sequencing Rule 4 restructured** to mandate node-reference consultation before any `import` or `node_update`: first confirm `node-reference.md` has been read this session and consult its entry for the node type, then call `type_info`.
+- Platform-framing precedence ladder: `type_info` (live session) → `node-reference.md` + `SKILL.md` → `solai-knowledge`.
+- "Reading node configuration" table: new "Wire / connection audit on a single node" row pointing at `flow_read action:"tab" includeNodeDetails:true` (the only path that returns wires per node today).
+
+#### `skills/solai-flow-editor/node-reference.md` (new file)
+
+- **Function-node logging surfaces** — `await logger.debug/info/warn/error(...)` is the right surface; `node.log(...)` is silently dropped; `node.warn`/`node.error` are vestigial Node-RED contract; `log-tap` for between-node observability. Includes Connection-first boundary for outbound I/O.
+- **Loop node section** — wiring pattern (port 1 must close back to loop input), three import-time silent gates (feedback wire, `enumeration` source default, `kind` short codes — `fcnt`/`cond`/`enum`), per-pass `msg` shape, `loopPayload` mode selector table, minimal valid enumeration-loop import payload.
+- **Loop downstream `includeTotal: true` envelope foot-gun** — when upstream wraps results in `{items, totalCount}`, default loop enumeration iterates the envelope's keys (twice, regardless of record count). Includes a generic diagnostic recipe for any wrong-iteration-count case.
+- **Query Object node** (previously undocumented in any layer) — distinct from `search-native-object` (different filter models — MongoDB-style object vs array-of-criteria); `query: ""` foot-gun (guaranteed `JSON.parse("")` runtime throw); canonical match-all is `"{}"`; full MongoDB-style filter syntax table.
+- **TypedInput pattern subsection** covering all Native Object nodes — `query`/`queryType`, `outputProperty`/`outputPropertyType`, `typeId`/`typeIdType`, `pageSize`/`pageSizeType`. Both halves of any TypedInput pair must be set explicitly on import; runtime Zod-rejects missing `*Type` companions even when `type_info` marks them `required: false`.
+- **`http-response` status code and header precedence** — configured value on the terminal is authoritative; upstream `msg.statusCode` is silently ignored when configured value is non-empty; falls back to `msg.statusCode` only when the terminal's value is blank. Authoring patterns for static / dynamic / mixed cases. Diagnostic tip for the *"msg.statusCode log shows the right value but client receives the wrong one"* trap.
+- **Native Object nodes intro** — `native-object-config` minimum record shape `{id, type, name}`; `id` load-bearing, `name` display label only, empty credential fields inert.
+- **`patch-native-object`** input must be RFC 6902 JSON Patch array `[{op,path,value}]`, not a plain object.
+- **Cross-batch wire rule** — any wire targeting a node outside the imported batch is silently dropped; always wire after import using the `wire` tool.
+- **Tray sequencing** — `tray_open` before `tray_read`; `delete` requires `useSelectionAction` as a boolean, not a string.
+- **Save vs Deploy terminology** — the editor button is "Save"; "Deploy" means binding a flow to an Agent for production execution.
+- **HTTP nodes** — strong preference for Connection-native nodes (`http-get`, `http-post`, etc.) over the generic `http request` node.
+- **`inject` HTTP route limitation** — `res` object cannot be JSON-serializable; use `contextual-test` nodes for HTTP route testing in-editor.
+- **`log-tap` configuration** — confirmed level enum (`debug`, `info`, `warn`, `error`) from live tray; default config; in-catch-context config.
+- **Function node return contract** — never `return null` as full return; multi-output array form; logging is not an endpoint.
+- **Web application / front-end guidelines** — Bootstrap, Font Awesome, Mustache (not Handlebars), placeholder image services, form validation patterns.
+
+#### `skills/solai-cli/`
+
+- **Two-layer SKILL.md structure** — reference/guidance (always available) and execution (shell required) — so reference value isn't lost when shell is unavailable.
+- **Plugin update check** on first invocation each session.
+- **Tenant overview discipline** — parallel fetch of all six reserved component types (`flow`, `agent`, `ai-route`, `api-configuration`, `jwks-configuration`, `authorization-code-app`) plus custom types for "what's in my tenant?" queries.
+- **Flow creation pattern** — CLI-stub + flow editor handoff: CLI creates a minimal lint-clean skeleton with full `catch → log-tap → error-response` chain, then hands off to the live editor for complex node content.
+- **Live editor preference** — when `mcp__ctxl-flow-editor__*` tools are available and `list_sessions` returns sessions, recommend switching to `solai-flow-editor`.
+- **Helper script narration** — `contextual_login.py` and `json_diff.py` both have user-facing narration before invocation.
+- **Auth recovery** narration before login flow.
+
+#### `skills/solai-cli/cli-reference.md`
+
+- Flow skeleton patterns for **HTTP, event, and scheduled flows** — full error handling chain from the start.
+- **Python heredoc requirement** for any complex content (HTML, JS, multi-line strings) — never inline in shell flags.
+- **Hex node ID generation** with explicit narration ("using Python's built-in `secrets` module — standard random number generator").
+- **`flows_cred` placement** corrected (inside `node_red_data`, not top-level).
+- **Tab `env: []` preservation** for editing existing flows.
+- **`/.editor` URL suffix** for browser handoff (without it, HTTP flows serve their root endpoint).
+- **`ctxl types add` envelope** — full required shape (`id`, `type: "custom"`, `name`, `pluralName`, `description`, `display`, `defaultListStyle`, `objectType`, `features.auditTrail.enabled`, `features.version.enabled`, `schema`) with allowed values for the four envelope keys most commonly missed.
+- **`ctxl types add` JSONL constraint** documented (parallel to the existing `records add` JSONL note).
+
+#### `skills/solai-knowledge/`
+
+- **Plugin update check** matching `solai-cli`.
+- **Secondary-by-design framing** — frontmatter description scopes coverage to platform/runtime behavior NOT already covered by plugin-side reference content; redirects "what's the X shape?", "how do I configure node Y?", "what are the foot-guns on Z?" type questions to `solai-flow-editor` or `solai-cli`.
+- **Precedence section** at the top of the body reinforcing plugin-first source-of-truth.
+- **MCP-failure fallback rule** — if `search` errors twice in a row or returns no relevant hits after one query refinement, stop searching and switch to plugin-side reference content.
+
+#### `agents/`
+
+- `flow-editor.md` updated to load both `SKILL.md` and `node-reference.md` after the split.
+- `plan-flow.md` description tightened to design-only; explicitly directs flow creation to `ctxl:solai-cli`.
+- `seed-builder.md` typo fixed (`ctxl types:get` → `ctxl types get`).
+
+### Changed
+
+- **"Universal rule" in AGENTS.md**: source-of-truth precedence is now plugin-side reference content first (kept current via ongoing empirical verification against the live platform), `ctxl:solai-knowledge` second (for platform/runtime behavior not covered in plugin-side reference). Cross-cutting queries can run both in parallel.
+- **"How to access plugin-side reference"** added to AGENTS.md and mirrored to `solai-cli` Hard Rules: invoke the relevant skill — do not `grep`, `find`, or otherwise enumerate the plugin install directory (`~/.claude/plugins/...`) directly.
+- **"Correct empty flow shape"** in `cli-reference.md` corrected: `native-object-config` `name` is a display label, not a tenant resolver; empty credential fields are inert; tab is optional in the persisted record (the dashboard does not emit one).
+- **README "Keeping Up to Date"** rewritten to reflect actual behavior — `autoUpdate` was found to be a no-op via empirical testing, replaced with the real `claude plugin update` command.
+- **README "Publishing Updates"** updated to favor frequent patch releases (*"when in doubt, patch"*).
+- **`solai-cli` package manager flexibility** — no longer prescriptive about npm; defers to user preference (`pnpm`, `yarn`, `bun`, etc.).
+- **`solai-cli` hard rule for credential files** generalized from the specific `~/.config/ctxl/config.json` path.
+- **Validate guidance** — distinguishes runtime-risk warnings (e.g. `require-catch-nodes`) from cosmetic warnings; never report "zero errors" if warnings exist.
+
+### Fixed
+
+- Removed deprecated `topics` reserved type from `cli-reference.md` (verified empirically against the registry — confirmed gone, not just unused).
+- Tray-corruption foot-gun on native-object nodes documented (open in tray auto-commits and may corrupt `typeId`).
+- Cross-batch wire drops correctly framed as silent and unconditional (not a sometimes-failure).
+- `flow-editor` agent updated to load both `SKILL.md` and `node-reference.md` after the skill split.
+
+### Notes
+
+- This release establishes a **verify-first** operating model for plugin doc evolution: every reported behavior is empirically reproduced against the live platform before it ships in the reference content. The principle caught multiple cases where shipping a reported behavior verbatim would have actively misled users — including framing-inverted claims about `msg.statusCode` precedence, `native-object-config` `name` semantics, and empty-credential-field requirements.
+
+[0.7.1]: https://github.com/ContextualIO/solution-ai-connect/releases/tag/v0.7.1

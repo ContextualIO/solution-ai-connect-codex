@@ -1,0 +1,20 @@
+{
+  "name": "contextual-io",
+  "interface": {
+    "displayName": "Contextual.io"
+  },
+  "plugins": [
+    {
+      "name": "solution-ai-connect",
+      "source": {
+        "source": "local",
+        "path": "./plugins/solution-ai-connect"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

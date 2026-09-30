@@ -1,0 +1,40 @@
+{
+  "name": "solution-ai-connect",
+  "version": "0.7.6+codex.20260930190143",
+  "description": "Codex plugin bundle for Contextual.io / Solution AI workflows: docs grounding, CLI guidance, live flow editing, Object Type schema design, and service release advice.",
+  "author": {
+    "name": "Contextual.io",
+    "url": "https://contextual.io"
+  },
+  "homepage": "https://docs.contextual.io/documentation-and-resources",
+  "repository": "https://github.com/ContextualIO/solution-ai-connect-codex",
+  "license": "MIT",
+  "keywords": [
+    "contextual",
+    "solution-ai",
+    "solai",
+    "flows",
+    "ctxl"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Solution AI Connect",
+    "shortDescription": "Build and inspect Contextual.io solutions from Codex.",
+    "longDescription": "Reusable Codex skills and MCP setup for working with Contextual.io / Solution AI tenants, flows, Object Types, services, releases, and platform documentation.",
+    "developerName": "Contextual.io",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write",
+      "MCP"
+    ],
+    "websiteURL": "https://docs.contextual.io/documentation-and-resources",
+    "defaultPrompt": [
+      "Use Solution AI Connect to inspect my tenant.",
+      "Use Solution AI Connect to plan a flow change.",
+      "Use Solution AI Connect to design an Object Type."
+    ],
+    "brandColor": "#10A37F"
+  }
+}
