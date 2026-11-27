@@ -16,7 +16,7 @@ The canonical product content remains in [`ContextualIO/solution-ai-connect`](ht
 
 ## Current Status
 
-The plugin is intended for Git-backed Codex marketplace installation. The current adapter content is synchronized from upstream `v0.7.6`.
+The plugin is intended for Git-backed Codex marketplace installation. The current adapter content is synchronized from upstream `v0.7.8`.
 
 Codex custom subagents are TOML files under `~/.codex/agents/` or `.codex/agents/`. They are separate from the plugin package.
 
@@ -67,6 +67,8 @@ Ask **“check for Solution AI Connect updates”** for an immediate check, or *
 Existing installations must be updated once using the commands above to receive this checker.
 
 ### Adapter release notes
+
+- **0.7.8+codex.20261127121059:** Sync the Flow Editor reference with upstream `v0.7.8`. It documents the stored Query Object modes, how to guard against a missing JSONata filter input, and where Native Object nodes write their results. The upstream docs-reader change applies to Claude’s tool allowlist.
 
 - **0.7.6+codex.20260930190143:** Publish the Codex adapter under ContextualIO with anonymous update checks, contributor and release guidance, automated validation, and secret scanning. Upstream content remains at `v0.7.6`.
 
